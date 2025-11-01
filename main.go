@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"compress/zlib"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -66,6 +68,48 @@ func main() {
 		// objectType := string(content[:typeIndex])
 		// contentSize := string(content[sizeIndex:nullIndex])
 		fmt.Print(string(content[nullIndex+1:]))
+	case "hash-object":
+		if len(os.Args) < 4 {
+			handleError(errors.New("usage: got hash-object [<args>...]"))
+		}
+		if os.Args[2] != "-w" {
+			handleError(errors.New("usage: got hash-object -w [<args>...]"))
+		}
+
+		filepath := os.Args[3]
+
+		b, err := os.ReadFile(filepath)
+		if err != nil {
+			handleError(err)
+		}
+
+		header := fmt.Sprintf("blob %d\x00", len(b))
+		b = append([]byte(header), b...)
+		hash := computeHash(b)
+		fmt.Println(hash)
+
+		buf := new(bytes.Buffer)
+
+		writer := zlib.NewWriter(buf)
+
+		if _, err := writer.Write(b); err != nil {
+			handleError(err)
+		}
+
+		if err := writer.Close(); err != nil {
+			handleError(err)
+		}
+
+		dir := fmt.Sprintf(".git/objects/%s", hash[:2])
+
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			handleError(err)
+		}
+
+		objectPath := fmt.Sprintf("%s/%s", dir, hash[2:])
+		if err := os.WriteFile(objectPath, buf.Bytes(), 0644); err != nil {
+			handleError(err)
+		}
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %s\n", command)
@@ -78,4 +122,9 @@ func handleError(err error) {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
+}
+
+func computeHash(data []byte) string {
+	h := sha1.Sum(data)
+	return hex.EncodeToString(h[:])
 }
