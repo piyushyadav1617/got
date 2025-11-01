@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"compress/zlib"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -25,9 +29,53 @@ func main() {
 		}
 
 		fmt.Println("Initialized git directory")
+	case "cat-file":
+		if len(os.Args) < 4 {
+			handleError(errors.New("usage: got cat-file -p [<args>...]"))
+		}
+		if os.Args[2] != "-p" {
+			handleError(errors.New("usage: got cat-file -p [<args>...]"))
+		}
+
+		hash := os.Args[3]
+		if len(hash) < 40 {
+			handleError(errors.New("invalid hash"))
+		}
+		filePath := fmt.Sprintf(".git/objects/%s/%s", hash[:2], hash[2:])
+		b, err := os.ReadFile(filePath)
+		if err != nil {
+			handleError(err)
+		}
+		reader := bytes.NewReader(b)
+		r, err := zlib.NewReader(reader)
+		if err != nil {
+			handleError(err)
+		}
+		defer r.Close()
+
+		content, err := io.ReadAll(r)
+		if err != nil {
+			handleError(err)
+		}
+		nullIndex := bytes.IndexByte(content, byte(0))
+		if nullIndex == -1 {
+			handleError(errors.New("invalid git object format"))
+		}
+		// typeIndex := bytes.IndexByte(content, byte(' '))
+		// sizeIndex := typeIndex + 1
+		// objectType := string(content[:typeIndex])
+		// contentSize := string(content[sizeIndex:nullIndex])
+		fmt.Print(string(content[nullIndex+1:]))
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %s\n", command)
+		os.Exit(1)
+	}
+}
+
+func handleError(err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 }
