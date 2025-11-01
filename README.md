@@ -1,2 +1,3 @@
 # got
-got is basically git in written in Go
+
+got is basically git written in Go
