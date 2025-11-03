@@ -6,11 +6,13 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 )
 
 var gitModes = map[string]string{
@@ -192,6 +194,41 @@ func main() {
 			handleError(err)
 		}
 		fmt.Println(hash)
+	case "commit-tree":
+		if len(os.Args) < 3 {
+			handleError(errors.New("tree hash is required"))
+			os.Exit(1)
+		}
+		commitTreeCmd := flag.NewFlagSet("commit-tree", flag.ExitOnError)
+
+		parent := commitTreeCmd.String("p", "", "parent commit hash")
+		message := commitTreeCmd.String("m", "", "commit message")
+
+		treeHash := os.Args[2]
+		commitTreeCmd.Parse(os.Args[3:])
+		commitMessage := *message
+
+		if commitMessage == "" {
+			handleError(errors.New("commit message is required"))
+		}
+		parentHash := *parent
+
+		var commitContent bytes.Buffer
+		commitContent.WriteString(fmt.Sprintf("tree %s\n", treeHash))
+		if parentHash != "" {
+			commitContent.WriteString(fmt.Sprintf("parent %s\n", parentHash))
+		}
+		commitContent.WriteString(fmt.Sprintf("author %s <%s> %s\n", "Piyush Yadav", "yadavpiyush222@gmail.com", formatGitTimestamp(time.Now())))
+		commitContent.WriteString(fmt.Sprintf("committer %s <%s> %s\n", "Piyush Yadav", "yadavpiyush222@gmail.com", formatGitTimestamp(time.Now())))
+		commitContent.WriteString("\n")
+		commitContent.WriteString(commitMessage)
+		commitContent.WriteString("\n")
+
+		commitHash, err := writeObject("commit", commitContent.Bytes())
+		if err != nil {
+			handleError(err)
+		}
+		fmt.Println(commitHash)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command %s\n", command)
 		os.Exit(1)
@@ -316,4 +353,13 @@ func writeObject(objectType string, content []byte) (string, error) {
 	}
 
 	return hash, nil
+}
+
+func formatGitTimestamp(t time.Time) string {
+	timestamp := t.Unix()
+	_, offset := t.Zone()
+	hours := offset / 3600
+	minutes := (offset % 3600) / 60
+	timezone := fmt.Sprintf("%+03d%02d", hours, minutes)
+	return fmt.Sprintf("%d %s", timestamp, timezone)
 }
